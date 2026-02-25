@@ -1443,7 +1443,7 @@ window.checkAchievements= checkAchievements;
  graphicsQuality = q;
  const ratio = localStorage.getItem('mecanicaze_ratio') || 'livre';
  currentRatio = ratio;
- loadAchievements();
+ if(typeof loadAchievementsFromStorage === "function") loadAchievementsFromStorage();
 })();
 const _origOpenPartsShop = window.openPartsShop;
 window.openPartsShop = function(){
@@ -4009,6 +4009,299 @@ if('serviceWorker' in navigator){
     navigator.serviceWorker.register('./sw.js').then(r => console.log('SW registered')).catch(e => console.log('SW error', e));
   });
 }
+</script>
+
+<!-- ===== MOBILE CONTROLS ===== -->
+<style>
+#mobile-controls {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 180px;
+  z-index: 50;
+  pointer-events: none;
+  user-select: none;
+}
+/* Show only on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  #mobile-controls { display: flex; }
+}
+
+/* ---- JOYSTICK (left side) ---- */
+#joy-zone {
+  pointer-events: all;
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  width: 140px;
+  height: 140px;
+}
+#joy-base {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(232,130,10,0.12);
+  border: 2px solid rgba(232,130,10,0.4);
+}
+#joy-stick {
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f59e0b, #b45309);
+  border: 2px solid #e8820a;
+  box-shadow: 0 0 14px rgba(232,130,10,0.6);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  transition: box-shadow 0.1s;
+}
+
+/* ---- D-PAD ARROWS (alternative, shows direction feedback) ---- */
+#dpad-arrows {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  width: 128px;
+  height: 128px;
+  pointer-events: none;
+}
+.dpad-arrow {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: rgba(232,130,10,0.5);
+  transition: color 0.1s;
+}
+.dpad-arrow.active { color: #fbbf24; }
+#dpad-up    { top: 0;    left: 44px; }
+#dpad-down  { bottom: 0; left: 44px; }
+#dpad-left  { left: 0;   top: 44px; }
+#dpad-right { right: 0;  top: 44px; }
+
+/* ---- ACTION BUTTONS (right side) ---- */
+#action-btns {
+  pointer-events: all;
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.mob-btn {
+  width: 62px;
+  height: 62px;
+  border-radius: 14px;
+  border: 2px solid;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  gap: 4px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.08s, box-shadow 0.08s;
+  background: rgba(0,0,0,0.75);
+}
+.mob-btn:active, .mob-btn.pressed {
+  transform: scale(0.88);
+}
+.mob-btn .mob-icon { font-size: 22px; line-height: 1; }
+
+/* Colors per button */
+#btn-fix   { border-color: #e8820a; color: #fbbf24; box-shadow: 0 0 10px rgba(232,130,10,0.4); }
+#btn-diag  { border-color: #60a5fa; color: #93c5fd; box-shadow: 0 0 10px rgba(96,165,250,0.3); }
+#btn-shop  { border-color: #34d399; color: #6ee7b7; box-shadow: 0 0 10px rgba(52,211,153,0.3); }
+#btn-rest  { border-color: #a78bfa; color: #c4b5fd; box-shadow: 0 0 10px rgba(167,139,250,0.3); }
+
+/* Pause button top-center */
+#btn-pause-mob {
+  pointer-events: all;
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid #555;
+  background: rgba(0,0,0,0.75);
+  color: #aaa;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+#btn-pause-mob:active { transform: translateX(-50%) scale(0.88); }
+</style>
+
+<div id="mobile-controls">
+  <!-- Joystick -->
+  <div id="joy-zone">
+    <div id="joy-base"></div>
+    <div id="joy-stick"></div>
+    <!-- Direction indicators -->
+    <div id="dpad-up"    class="dpad-arrow">▲</div>
+    <div id="dpad-down"  class="dpad-arrow">▼</div>
+    <div id="dpad-left"  class="dpad-arrow">◀</div>
+    <div id="dpad-right" class="dpad-arrow">▶</div>
+  </div>
+
+  <!-- Pause -->
+  <button id="btn-pause-mob" ontouchstart="handlePauseMob(event)">⏸</button>
+
+  <!-- Action Buttons -->
+  <div id="action-btns">
+    <button class="mob-btn" id="btn-fix"  ontouchstart="mobBtnStart(event,'fix')"  ontouchend="mobBtnEnd('fix')">
+      <span class="mob-icon">🔧</span>CONSERTAR
+    </button>
+    <button class="mob-btn" id="btn-diag" ontouchstart="mobBtnStart(event,'diag')" ontouchend="mobBtnEnd('diag')">
+      <span class="mob-icon">🔍</span>DIAGNOSE
+    </button>
+    <button class="mob-btn" id="btn-shop" ontouchstart="mobBtnStart(event,'shop')" ontouchend="mobBtnEnd('shop')">
+      <span class="mob-icon">🏪</span>LOJA/COMER
+    </button>
+    <button class="mob-btn" id="btn-rest" ontouchstart="mobBtnStart(event,'rest')" ontouchend="mobBtnEnd('rest')">
+      <span class="mob-icon">📦</span>REABASTECER
+    </button>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ---- JOYSTICK ----
+  const zone  = document.getElementById('joy-zone');
+  const stick = document.getElementById('joy-stick');
+  const upEl  = document.getElementById('dpad-up');
+  const dnEl  = document.getElementById('dpad-down');
+  const ltEl  = document.getElementById('dpad-left');
+  const rtEl  = document.getElementById('dpad-right');
+
+  let joyActive = false;
+  let joyOriginX = 0, joyOriginY = 0;
+  const DEAD = 8;
+  const MAX  = 52;
+
+  function setJoy(dx, dy){
+    if(typeof joyDX !== 'undefined'){
+      joyDX = dx;
+      joyDY = dy;
+    }
+    // Update arrow indicators
+    upEl.classList.toggle('active', dy < -0.3);
+    dnEl.classList.toggle('active', dy >  0.3);
+    ltEl.classList.toggle('active', dx < -0.3);
+    rtEl.classList.toggle('active', dx >  0.3);
+  }
+
+  function onJoyStart(e){
+    e.preventDefault();
+    joyActive = true;
+    const rect = zone.getBoundingClientRect();
+    const t = e.touches[0];
+    joyOriginX = t.clientX - rect.left;
+    joyOriginY = t.clientY - rect.top;
+    // Init AudioContext on first touch
+    if(typeof SFX !== 'undefined' && SFX._init) SFX._init();
+    if(typeof SFX !== 'undefined' && SFX.startAmbient) SFX.startAmbient();
+  }
+
+  function onJoyMove(e){
+    if(!joyActive) return;
+    e.preventDefault();
+    const rect = zone.getBoundingClientRect();
+    const t = e.touches[0];
+    let ox = t.clientX - rect.left - joyOriginX;
+    let oy = t.clientY - rect.top  - joyOriginY;
+    const dist = Math.sqrt(ox*ox + oy*oy);
+    const capped = Math.min(dist, MAX);
+    const angle  = Math.atan2(oy, ox);
+    const cx = Math.cos(angle)*capped;
+    const cy = Math.sin(angle)*capped;
+
+    stick.style.transform = `translate(calc(-50% + ${cx}px), calc(-50% + ${cy}px))`;
+
+    const ndx = dist > DEAD ? cx / MAX : 0;
+    const ndy = dist > DEAD ? cy / MAX : 0;
+    setJoy(ndx, ndy);
+  }
+
+  function onJoyEnd(e){
+    joyActive = false;
+    stick.style.transform = 'translate(-50%, -50%)';
+    setJoy(0, 0);
+  }
+
+  zone.addEventListener('touchstart', onJoyStart, {passive: false});
+  zone.addEventListener('touchmove',  onJoyMove,  {passive: false});
+  zone.addEventListener('touchend',   onJoyEnd,   {passive: false});
+  zone.addEventListener('touchcancel',onJoyEnd,   {passive: false});
+
+  // ---- ACTION BUTTONS ----
+  window.mobBtnStart = function(e, action){
+    e.preventDefault();
+    document.getElementById('btn-' + (action==='fix'?'fix':action==='diag'?'diag':action==='shop'?'shop':'rest')).classList.add('pressed');
+    if(typeof SFX !== 'undefined' && SFX._init) SFX._init();
+    switch(action){
+      case 'fix':  if(typeof doFix       !== 'undefined') doFix();       break;
+      case 'diag':
+        if(typeof nearShop !== 'undefined' && nearShop()) {
+          if(typeof openPartsShop !== 'undefined') openPartsShop();
+        } else {
+          if(typeof doDiagnose !== 'undefined') doDiagnose();
+        }
+        break;
+      case 'shop':
+        if(typeof nearCantine !== 'undefined' && nearCantine()){
+          if(typeof doEat !== 'undefined') doEat(0);
+        } else if(typeof nearShop !== 'undefined' && nearShop()){
+          if(typeof openPartsShop !== 'undefined') openPartsShop();
+        } else if(typeof doDiagnose !== 'undefined') {
+          doDiagnose();
+        }
+        break;
+      case 'rest': if(typeof doRestock !== 'undefined') doRestock(); break;
+    }
+  };
+
+  window.mobBtnEnd = function(action){
+    const map = {fix:'btn-fix', diag:'btn-diag', shop:'btn-shop', rest:'btn-rest'};
+    const el = document.getElementById(map[action]);
+    if(el) el.classList.remove('pressed');
+  };
+
+  // ---- PAUSE BUTTON ----
+  window.handlePauseMob = function(e){
+    e.preventDefault();
+    if(typeof currentGameState !== 'undefined'){
+      if(currentGameState === 1 /* PLAYING */) {
+        // ESC equivalent
+        document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+      } else if(currentGameState === 2 /* PAUSE */) {
+        if(typeof resumeGame !== 'undefined') resumeGame();
+      }
+    }
+  };
+
+  // Hide keyboard hint on mobile
+  if(window.matchMedia('(hover: none) and (pointer: coarse)').matches){
+    const ctrl = document.getElementById('controls');
+    if(ctrl) ctrl.style.display = 'none';
+  }
+})();
 </script>
 </body>
 </html>
